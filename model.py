@@ -9,6 +9,7 @@ from collections import namedtuple
 from module import *
 from utils import *
 
+from custom_vgg16 import *
 
 class cyclegan(object):
     def __init__(self, sess, args):
@@ -18,7 +19,9 @@ class cyclegan(object):
         self.input_c_dim = args.input_nc
         self.output_c_dim = args.output_nc
         self.L1_lambda = args.L1_lambda
+        self.lambda_vgg_feat = args.lambda_vgg_feat
         self.dataset_dir = args.dataset_dir
+        self.vgg_data_dict = loadWeightsData('./vgg16.npy')
 
         self.discriminator = discriminator
         if args.use_resnet:
@@ -39,6 +42,8 @@ class cyclegan(object):
         self._build_model()
         self.saver = tf.train.Saver()
         self.pool = ImagePool(args.max_size)
+
+
 
     def _build_model(self):
         self.real_data = tf.placeholder(tf.float32,
@@ -76,7 +81,32 @@ class cyclegan(object):
 
 
         self.fake_B_mul_mask = tf.multiply(self.fake_B, self.mask_A) + tf.multiply(self.back_A, 1 - self.mask_A)
-        self.g_loss = abs_criterion(self.fake_B_mul_mask, self.real_B) # l1 loss
+        #self.g_loss = abs_criterion(self.fake_B_mul_mask, self.real_B) # l1 loss
+        self.g_loss = abs_criterion(self.fake_B, self.real_B) # l1 loss
+
+
+        # content real_B feature
+        vgg_real = custom_Vgg16(self.real_B, data_dict=self.vgg_data_dict)
+        vgg_real_feature = [vgg_real.conv1_2, vgg_real.conv2_2, vgg_real.conv3_3, vgg_real.conv4_3, vgg_real.conv5_3]
+
+        # feature after transformation
+        #vgg_gen = custom_Vgg16(self.fake_B_mul_mask, data_dict=self.vgg_data_dict)
+        vgg_gen = custom_Vgg16(self.fake_B, data_dict=self.vgg_data_dict)
+        vgg_gen_feature = [vgg_gen.conv1_2, vgg_gen.conv2_2, vgg_gen.conv3_3, vgg_gen.conv4_3, vgg_gen.conv5_3]
+
+
+        # compute feature loss
+        self.vgg_loss = 0
+        self.vgg_loss_weights = [1.0 / 32, 1.0 / 16, 1.0 / 8, 1.0 / 4, 1.0]
+        # for f, f_ in zip(vgg_real_feature, vgg_gen_feature):
+        #     self.vgg_loss += tf.reduce_mean(tf.subtract(f, f_) ** 2)
+
+        for k in range(len(self.vgg_loss_weights)):
+            self.vgg_loss += self.vgg_loss_weights[k] * abs_criterion(vgg_real_feature[k], vgg_gen_feature[k])
+            #self.vgg_loss += abs_criterion(vgg_real_feature[k], vgg_gen_feature[k])
+
+        self.total_loss = self.g_loss + self.vgg_loss * self.lambda_vgg_feat
+
 
         self.fake_A_sample = tf.placeholder(tf.float32,
                                             [None, self.image_size, self.image_size,
@@ -114,7 +144,10 @@ class cyclegan(object):
         #      self.db_loss_sum, self.db_loss_real_sum, self.db_loss_fake_sum,
         #      self.d_loss_sum]
         # )
-        self.g_sum = tf.summary.scalar("loss", self.g_loss)
+        self.g_sum = tf.summary.scalar("g_loss", self.g_loss)
+        self.vgg_sum = tf.summary.scalar("vgg_loss", self.vgg_loss)
+        self.total_sum = tf.summary.scalar("total_loss", self.total_loss)
+        self.loss_sum = tf.summary.merge([self.g_sum, self.vgg_sum, self.total_sum])
 
         self.test_A = tf.placeholder(tf.float32,
                                      [None, self.image_size, self.image_size,
@@ -127,7 +160,8 @@ class cyclegan(object):
 
         t_vars = tf.trainable_variables()
         #self.d_vars = [var for var in t_vars if 'discriminator' in var.name]
-        self.g_vars = [var for var in t_vars if 'generator' in var.name]
+        # self.g_vars = [var for var in t_vars if 'generator' in var.name]
+        self.g_vars = t_vars
         for var in t_vars: print(var.name)
 
     def train(self, args):
@@ -136,7 +170,7 @@ class cyclegan(object):
         # self.d_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
         #     .minimize(self.d_loss, var_list=self.d_vars)
         self.g_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
-            .minimize(self.g_loss, var_list=self.g_vars)
+            .minimize(self.total_loss, var_list=self.g_vars)
 
         init_op = tf.global_variables_initializer()
         self.sess.run(init_op)
@@ -177,6 +211,12 @@ class cyclegan(object):
             # print dataB[0:10]
             #np.random.shuffle(dataA)
             #np.random.shuffle(dataB)
+
+            # synchronize shuffle
+            all_data = list(zip(foreA,backA,maskA,dataB))
+            np.random.shuffle(all_data)
+            foreA, backA, maskA, dataB = zip(*all_data)
+
             batch_idxs = min(min(len(foreA), len(dataB)), args.train_size) // self.batch_size
             lr = args.lr if epoch < args.epoch_step else args.lr*(args.epoch-epoch)/(args.epoch-args.epoch_step)
 
@@ -190,7 +230,7 @@ class cyclegan(object):
 
                 # Update G network and record fake outputs
                 fake_B, _, summary_str = self.sess.run(
-                    [self.fake_B, self.g_optim, self.g_sum],
+                    [self.fake_B, self.g_optim, self.loss_sum],
                     feed_dict={self.real_data: batch_images, self.lr: lr})
                 self.writer.add_summary(summary_str, counter)
                 #[fake_B] = self.pool([fake_B])
@@ -212,10 +252,10 @@ class cyclegan(object):
                     self.sample_model(os.path.join(args.sample_dir,args.version), epoch, idx)
 
                 if np.mod(counter, args.save_freq) == 2:
-                    self.save(args.checkpoint_dir, counter)
+                    self.save(args.checkpoint_dir, counter, args.version)
 
-    def save(self, checkpoint_dir, step):
-        model_name = "unet.model"
+    def save(self, checkpoint_dir, step, version):
+        model_name = version+".model"
         model_dir = "%s_%s" % (self.dataset_dir, self.image_size)
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
 
@@ -282,8 +322,8 @@ class cyclegan(object):
                     './{}/{:02d}_{:04d}_backA.jpg'.format(sample_dir, epoch, idx))
         save_images(real_B, [self.batch_size, 1],
                     './{}/{:02d}_{:04d}_realB.jpg'.format(sample_dir, epoch, idx))
-        save_images(fake_B_mul_mask, [self.batch_size, 1],
-                    './{}/{:02d}_{:04d}_fake_B_mul_mask.jpg'.format(sample_dir, epoch, idx))
+        # save_images(fake_B_mul_mask, [self.batch_size, 1],
+        #             './{}/{:02d}_{:04d}_fake_B_mul_mask.jpg'.format(sample_dir, epoch, idx))
 
     def sample_model_train(self, sample_dir, epoch, idx):
             # dataA = glob('./datasets/{}/*.*'.format(self.dataset_dir + '/testA'))

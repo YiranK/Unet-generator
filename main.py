@@ -3,6 +3,8 @@ import os
 import tensorflow as tf
 tf.set_random_seed(19)
 from model import cyclegan
+import sys
+sys.path.insert(0, '/mnt/lustre/kangyiran/tensorflow_vgg')
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--dataset_dir', dest='dataset_dir', default='horse2zebra', help='path of the dataset')
@@ -31,6 +33,7 @@ parser.add_argument('--use_resnet', dest='use_resnet', type=bool, default=False,
 parser.add_argument('--use_lsgan', dest='use_lsgan', type=bool, default=True, help='gan loss defined in lsgan')
 parser.add_argument('--max_size', dest='max_size', type=int, default=50, help='max size of image pool, 0 means do not use image pool')
 parser.add_argument('--version', dest='version', type=str, help='specify the version of logs and sample directory')
+parser.add_argument('--lambda_vgg_feat', dest='lambda_vgg_feat', default=1e0, type=float)
 
 args = parser.parse_args()
 
