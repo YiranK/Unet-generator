@@ -21,6 +21,7 @@ class cyclegan(object):
         self.L1_lambda = args.L1_lambda
         self.lambda_vgg_feat = args.lambda_vgg_feat
         self.dataset_dir = args.dataset_dir
+        self.dataset_dir = args.version
         self.vgg_data_dict = loadWeightsData('./vgg16.npy')
 
         self.discriminator = discriminator
@@ -194,6 +195,8 @@ class cyclegan(object):
             backAdir = '/mnt/lustre/kangyiran/dataset/GMU/GMUbackPatch/'
             maskAdir = '/mnt/lustre/kangyiran/dataset/GMU/GMUmaskPatch/'
             dataBdir = '/mnt/lustre/kangyiran/dataset/GMU/GMUgtPatch/'  # GT
+
+            #0326
             foreA = os.listdir(foreAdir)
             foreA = [os.path.join(foreAdir, x) for x in foreA]
             backA = os.listdir(backAdir)
@@ -206,6 +209,18 @@ class cyclegan(object):
             backA.sort()
             maskA.sort()
             dataB.sort()
+
+            #0327
+            # foreA = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_fore_patch/*.*')
+            # backA = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_back_patch/*.*')
+            # maskA = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_mask_patch/*.*')
+            # dataB = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_gt_patch/*.*')  # GT
+            # foreA.sort()
+            # backA.sort()
+            # maskA.sort()
+            # dataB.sort()
+
+
             # print len(foreA), len(backA), len(dataB)
             # print backA[0:10]
             # print dataB[0:10]
@@ -250,6 +265,7 @@ class cyclegan(object):
 
                 if np.mod(counter, args.print_freq) == 1:
                     self.sample_model(os.path.join(args.sample_dir,args.version), epoch, idx)
+                    self.sample_model(os.path.join(args.sample_dir,args.version), epoch, 0)
 
                 if np.mod(counter, args.save_freq) == 2:
                     self.save(args.checkpoint_dir, counter, args.version)
@@ -257,6 +273,7 @@ class cyclegan(object):
     def save(self, checkpoint_dir, step, version):
         model_name = version+".model"
         model_dir = "%s_%s" % (self.dataset_dir, self.image_size)
+        model_dir = "%s" % (self.dataset_dir)
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
 
         if not os.path.exists(checkpoint_dir):
@@ -270,11 +287,14 @@ class cyclegan(object):
         print(" [*] Reading checkpoint...")
 
         model_dir = "%s_%s" % (self.dataset_dir, self.image_size)
+        model_dir = "%s" % (self.dataset_dir)
         checkpoint_dir = os.path.join(checkpoint_dir, model_dir)
 
         ckpt = tf.train.get_checkpoint_state(checkpoint_dir)
+        print checkpoint_dir, ckpt
         if ckpt and ckpt.model_checkpoint_path:
             ckpt_name = os.path.basename(ckpt.model_checkpoint_path)
+            print ckpt_name
             self.saver.restore(self.sess, os.path.join(checkpoint_dir, ckpt_name))
             return True
         else:
@@ -305,6 +325,12 @@ class cyclegan(object):
         # print foreA[0:5],backA[0:5],dataB[0:5]
 
         batch_files = list(zip(foreA[:self.batch_size], backA[:self.batch_size], maskA[:self.batch_size], dataB[:self.batch_size]))
+        #print batch_files
+        # batch_files = list(zip(foreA[idx * self.batch_size:(idx + 1) * self.batch_size],
+        #                        backA[idx * self.batch_size:(idx + 1) * self.batch_size],
+        #                        maskA[idx * self.batch_size:(idx + 1) * self.batch_size],
+        #                        dataB[idx * self.batch_size:(idx + 1) * self.batch_size]))
+        #print batch_files
         sample_images = [load_train_data(batch_file, is_testing=True) for batch_file in batch_files]
         sample_images = np.array(sample_images).astype(np.float32)
 
@@ -312,6 +338,9 @@ class cyclegan(object):
             [self.fake_B, self.fore_A, self.back_A, self.real_B, self.mask_A, self.fake_B_mul_mask],
             feed_dict={self.real_data: sample_images}
         )
+
+        if not os.path.exists(sample_dir):
+            os.makedirs(sample_dir)
 
         # print mask_A
         save_images(fake_B, [self.batch_size, 1],
