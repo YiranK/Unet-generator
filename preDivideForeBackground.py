@@ -4,13 +4,36 @@ import skimage
 from skimage.io import imread
 from skimage import exposure
 import random
+import os
 
-GMUfore_dir='./GMUforePatch/'
-GMUback_dir='./GMUbackPatch/'
-GMUmask_dir='./GMUmaskPatch/'
-GMUgt_dir='./GMUgtPatch/'
+patch_version = 'Patch_shrink_bbox'
+patch_version = 'patch_big_0329'
+
+dataset_path = './synv13/local_synv13.txt'
+dataset_path = './localGMU_train.txt'
+
+GMUfore_dir='/data/GMU/{}/GMUtest_fore_patch/'.format(patch_version)
+GMUback_dir='/data/GMU/{}/GMUtest_back_patch/'.format(patch_version)
+GMUmask_dir='/data/GMU/{}/GMUtest_mask_patch/'.format(patch_version)
+GMUgt_dir='/data/GMU/{}/GMUtest_gt_patch/'.format(patch_version)
+
+# GMUfore_dir='/data/unet/synv13big/'
+# GMUback_dir='/data/unet/synv13big/'
+# GMUmask_dir='/data/unet/synv13big/'
+# GMUgt_dir='/data/unet/synv13big/'
+
+dirs = [GMUfore_dir, GMUback_dir, GMUmask_dir, GMUgt_dir]
+for dir in dirs:
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+height = 1080
+width = 1920
+# height = 480
+# width = 640
+
 count = 0
-with open("./localGMU_train.txt") as f:
+with open(dataset_path) as f:
     while True:
         count += 1
         line = f.readline()
@@ -18,8 +41,8 @@ with open("./localGMU_train.txt") as f:
             break
         # if count > 20472:
         #     break
-        if count < 37797:
-            continue
+        # if count > 20227:
+        #     break
         if line.find('.png')>-1:
             #foreground = np.zeros((1080,1920,3))
             img = imread(line.strip())
@@ -38,17 +61,24 @@ with open("./localGMU_train.txt") as f:
                 int_bbox = [int(x) for x in bbox]
 
                 ymin = max(0, int_bbox[1]-4)
-                ymax = min(1080, int_bbox[3]+4)
+                ymax = min(height, int_bbox[3]+4)
                 xmin = max(0, int_bbox[0]-4)
-                xmax = min(1920, int_bbox[2]+4)
+                xmax = min(width, int_bbox[2]+4)
 
 
                 w = xmax - xmin
                 h = ymax - ymin
 
                 patch_size = 256
-                while w > patch_size or h > patch_size:
-                    patch_size += 64
+                while w > patch_size or h > patch_size or w * h > patch_size * patch_size * 2/3:
+                    patch_size += 32
+
+                # while (w < patch_size/3 or h < patch_size/3) and patch_size > 20 and w < patch_size-8 and h < patch_size-8:
+                #     patch_size -= 8
+
+                # 0329
+                while (w * h < patch_size * patch_size /2) and patch_size > 20 and w < patch_size-8 and h < patch_size-8:
+                    patch_size -= 8
 
                 gt = np.zeros((patch_size, patch_size, 3))
                 fore = np.zeros((patch_size, patch_size, 3))
@@ -57,18 +87,19 @@ with open("./localGMU_train.txt") as f:
                 pad_w = patch_size - w
                 pad_h = patch_size - h
 
-                if xmin < 1920-xmax:
+
+                if xmin < width-xmax:
                     pad_left = random.randint(0, min(pad_w, xmin))
                     pad_right = pad_w - pad_left
                 else:
-                    pad_right = random.randint(0, min(pad_w, 1920 - xmax))
+                    pad_right = random.randint(0, min(pad_w, width - xmax))
                     pad_left = pad_w - pad_right
 
-                if ymin < 1080-ymax:
+                if ymin < height-ymax:
                     pad_up = random.randint(0, min(pad_h, ymin))
                     pad_bottom = pad_h - pad_up
                 else:
-                    pad_bottom = random.randint(0, min(pad_h, 1080 - ymax))
+                    pad_bottom = random.randint(0, min(pad_h, height - ymax))
                     pad_up = pad_h - pad_bottom
 
                 pad_xmin = xmin - pad_left
@@ -76,13 +107,15 @@ with open("./localGMU_train.txt") as f:
                 pad_ymin = ymin - pad_up
                 pad_ymax = ymax + pad_bottom
 
+
                 gt = gt_tmp[pad_ymin:pad_ymax,pad_xmin:pad_xmax]
                 fore[pad_up:pad_up+h,pad_left:pad_left+w] = fore_tmp[ymin:ymax,xmin:xmax] # only for bounding box
                 mask[pad_up:pad_up+h,pad_left:pad_left+w] = 1
                 back = gt.copy()
                 back[pad_up:patch_size-pad_bottom,pad_left:patch_size-pad_right] = 0
 
-                if w > 256 or h > 256:
+                if patch_size != 256 or patch_size != 256:
+                    print gt.shape, pad_ymin, pad_ymax, pad_up, pad_bottom
                     gt = scipy.misc.imresize(gt, [256,256])
                     fore = scipy.misc.imresize(fore,[256,256])
                     back = scipy.misc.imresize(back,[256,256])
