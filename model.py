@@ -210,15 +210,25 @@ class cyclegan(object):
             maskA.sort()
             dataB.sort()
 
-            #0327
-            # foreA = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_fore_patch/*.*')
-            # backA = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_back_patch/*.*')
-            # maskA = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_mask_patch/*.*')
-            # dataB = glob('/mnt/lustre/kangyiran/dataset/GMU/Patch_shrink_bbox/GMUtrain_gt_patch/*.*')  # GT
-            # foreA.sort()
-            # backA.sort()
-            # maskA.sort()
-            # dataB.sort()
+            #0330
+            foreA = glob('/mnt/lustre/kangyiran/Data_t1/patch_big_0329/GMUtrain_fore_patch/*.*')
+            backA = glob('/mnt/lustre/kangyiran/Data_t1/patch_big_0329/GMUtrain_back_patch/*.*')
+            maskA = glob('/mnt/lustre/kangyiran/Data_t1/patch_big_0329/GMUtrain_mask_patch/*.*')
+            dataB = glob('/mnt/lustre/kangyiran/Data_t1/patch_big_0329/GMUtrain_gt_patch/*.*')  # GT
+            foreA.sort()
+            backA.sort()
+            maskA.sort()
+            dataB.sort()
+
+            #0330, v13addnoise
+            foreA = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v13noise_0329/SYNv13noise_fore_patch/*.*')
+            backA = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v13noise_0329/SYNv13noise_back_patch/*.*')
+            maskA = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v13noise_0329/SYNv13noise_mask_patch/*.*')
+            dataB = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v13noise_0329/SYNv13noise_gt_patch/*.*')  # GT
+            foreA.sort()
+            backA.sort()
+            maskA.sort()
+            dataB.sort()
 
 
             # print len(foreA), len(backA), len(dataB)
@@ -441,3 +451,50 @@ class cyclegan(object):
                 '..' + os.path.sep + image_path)))
             index.write("</tr>")
         index.close()
+
+    def test(self, args):
+        init_op = tf.global_variables_initializer()
+        self.sess.run(init_op)
+
+        if self.load(args.checkpoint_dir):
+            print(" [*] Load SUCCESS")
+        else:
+            print(" [!] Load failed...")
+
+        # test dir
+        foreA = glob('/mnt/lustre/kangyiran/dataset/GMU/synv13/*_fore.png')
+        backA = glob('/mnt/lustre/kangyiran/dataset/GMU/synv13/*_back.png')
+        maskA = glob('/mnt/lustre/kangyiran/dataset/GMU/synv13/*_mask.png')
+        #dataB = glob('/mnt/lustre/kangyiran/dataset/GMU/GMUgtPatch/*.*')  # GT
+        foreA.sort()
+        backA.sort()
+        maskA.sort()
+        #dataB.sort()
+
+        #0330, synv19
+        foreA = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v19_0329/SYNv19_fore_patch/*_fore.png')
+        backA = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v19_0329/SYNv19_back_patch/*_back.png')
+        maskA = glob('/mnt/lustre/kangyiran/Data_t1/patchSYN_v19_0329/SYNv19_mask_patch/*_mask.png')
+        # dataB = glob('/mnt/lustre/kangyiran/dataset/GMU/GMUgtPatch/*.*')  # GT
+        foreA.sort()
+        backA.sort()
+        maskA.sort()
+
+        phase = 'patchSYN_v19_0329'
+        test_dir = os.path.join(args.test_dir, args.version+'__'+phase)
+        if not os.path.exists(test_dir):
+            os.makedirs(test_dir)
+
+        sample_files = list(zip(foreA,backA,maskA))
+        #print sample_files
+        for sample_file in sample_files:
+            print('Processing image: ' + sample_file[0])
+            sample_name = sample_file[0].split('/')[-1]
+            sample_image = [load_test_data(sample_file, args.fine_size)]
+            sample_image = np.array(sample_image).astype(np.float32)
+
+            fake_B = self.sess.run(self.testB, feed_dict={self.test_A: sample_image})
+
+            #
+            save_images(fake_B, [self.batch_size, 1],
+                        './{0}/{1}fakeB.jpg'.format(test_dir, sample_name[:-8]))
