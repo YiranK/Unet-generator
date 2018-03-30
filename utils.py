@@ -43,9 +43,17 @@ class ImagePool(object):
             return image
 
 def load_test_data(image_path, fine_size=256):
-    img = imread(image_path)
-    img = scipy.misc.imresize(img, [fine_size, fine_size])
-    img = img/127.5 - 1
+    foreA = imread(image_path[0])
+    backA = imread(image_path[1])
+    maskA = imread(image_path[2], is_grayscale=True)
+    #img = scipy.misc.imresize(img, [fine_size, fine_size])
+    #img = img/127.5 - 1
+    foreA = foreA / 127.5 - 1.
+    backA = backA / 127.5 - 1.
+    maskA = maskA / 255
+
+    maskA = np.expand_dims(maskA, axis=2)
+    img = np.concatenate((foreA, backA, maskA), axis=2)
     return img
 
 def load_train_data(image_path, load_size=286, fine_size=256, is_testing=False):

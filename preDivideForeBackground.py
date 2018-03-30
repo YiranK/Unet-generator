@@ -8,14 +8,20 @@ import os
 
 patch_version = 'Patch_shrink_bbox'
 patch_version = 'patch_big_0329'
+patch_version = 'patchSYN_v13_0329'
+patch_version = 'patchSYN_v19_0329'
 
-dataset_path = './synv13/local_synv13.txt'
-dataset_path = './localGMU_train.txt'
+dataset_path = './localSYNv19.txt'
+# dataset_path = './localGMU_test.txt'
+# dataset_path = './localGMU_train.txt'
 
-GMUfore_dir='/data/GMU/{}/GMUtest_fore_patch/'.format(patch_version)
-GMUback_dir='/data/GMU/{}/GMUtest_back_patch/'.format(patch_version)
-GMUmask_dir='/data/GMU/{}/GMUtest_mask_patch/'.format(patch_version)
-GMUgt_dir='/data/GMU/{}/GMUtest_gt_patch/'.format(patch_version)
+phase = 'GMUtrain'
+phase = 'SYNv19'
+
+GMUfore_dir='/data/GMU/{0}/{1}_fore_patch/'.format(patch_version, phase)
+GMUback_dir='/data/GMU/{0}/{1}_back_patch/'.format(patch_version, phase)
+GMUmask_dir='/data/GMU/{0}/{1}_mask_patch/'.format(patch_version, phase)
+GMUgt_dir='/data/GMU/{0}/{1}_gt_patch/'.format(patch_version, phase)
 
 # GMUfore_dir='/data/unet/synv13big/'
 # GMUback_dir='/data/unet/synv13big/'
@@ -27,10 +33,13 @@ for dir in dirs:
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-height = 1080
-width = 1920
-# height = 480
-# width = 640
+# height = 1080
+# width = 1920
+height = 480
+width = 640
+
+joint_record = open('./synv19box.txt','w')
+
 
 count = 0
 with open(dataset_path) as f:
@@ -41,13 +50,14 @@ with open(dataset_path) as f:
             break
         # if count > 20472:
         #     break
-        # if count > 20227:
-        #     break
-        if line.find('.png')>-1:
+        # if count < 233:
+        #     continue
+        if line.find('.jpg')>-1:
             #foreground = np.zeros((1080,1920,3))
             img = imread(line.strip())
             #background = img.copy()
             img_name = line.strip().split('/')[-3]+'_'+line.strip().split('/')[-1]
+            img_name = line.strip().split('/')[-1]
             for i in range(5):
                 t = f.readline()
             #t = int(f.readlines(4)[-1].strip())
@@ -75,9 +85,8 @@ with open(dataset_path) as f:
 
                 # while (w < patch_size/3 or h < patch_size/3) and patch_size > 20 and w < patch_size-8 and h < patch_size-8:
                 #     patch_size -= 8
-
                 # 0329
-                while (w * h < patch_size * patch_size /2) and patch_size > 20 and w < patch_size-8 and h < patch_size-8:
+                while (w * h < patch_size * patch_size /3) and patch_size > 20 and w < patch_size-8 and h < patch_size-8:
                     patch_size -= 8
 
                 gt = np.zeros((patch_size, patch_size, 3))
@@ -115,26 +124,34 @@ with open(dataset_path) as f:
                 back[pad_up:patch_size-pad_bottom,pad_left:patch_size-pad_right] = 0
 
                 if patch_size != 256 or patch_size != 256:
-                    print gt.shape, pad_ymin, pad_ymax, pad_up, pad_bottom
+                    #print gt.shape, pad_ymin, pad_ymax, pad_up, pad_bottom
                     gt = scipy.misc.imresize(gt, [256,256])
                     fore = scipy.misc.imresize(fore,[256,256])
                     back = scipy.misc.imresize(back,[256,256])
                     mask = scipy.misc.imresize(mask,[256,256])
 
+                # add noise
+                # degree = round(random.random() * 2 + 0.2, 2)
+                # fore = exposure.adjust_gamma(fore, degree)
+                # nm = random.randint(0, 2)
+                # if nm == 1:
+                #     noise_mode = ['gaussian', 'poisson']
+                #     fore = skimage.util.random_noise(fore, mode=noise_mode[nm])
 
-                nm = random.randint(0, 2)
-                if nm > 2:
-                    noise_mode = ['gaussian', 'poisson']
-                    fore = skimage.util.random_noise(fore, mode=noise_mode[nm])
-                degree = round(random.random()*3+0.2, 2)
-                fore = exposure.adjust_gamma(fore, degree)
                 scipy.misc.imsave(GMUfore_dir + img_name[:-4] + '_box' + str(i) + '_fore.png', fore)
                 scipy.misc.imsave(GMUback_dir + img_name[:-4] + '_box' + str(i) + '_back.png', back)
                 scipy.misc.imsave(GMUmask_dir + img_name[:-4] + '_box' + str(i) + '_mask.png', mask)
                 scipy.misc.imsave(GMUgt_dir + img_name[:-4] + '_box' + str(i) + '_gt.png', gt)
+
+
+                patch_pos = [pad_ymin,pad_ymax,pad_xmin,pad_xmax]
+                patch_pos = [str(x) for x in patch_pos]
+                joint_record.write(img_name[:-4] + '_box' + str(i)+' '+' '.join(patch_pos)+'\n')
 
                 # foreground[ymin:ymax,xmin:xmax] = temp[ymin:ymax,xmin:xmax]
                 # background[ymin:ymax,xmin:xmax] = 0
 
             #scipy.misc.imsave(GMUfore_dir+img_name[:-4]+'_fore.png', foreground)
             #scipy.misc.imsave(GMUback_dir+ img_name[:-4] + '_back.png', background)
+
+joint_record.close()
